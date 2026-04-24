@@ -1,0 +1,431 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: ai
+    description: AI generation operations
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /ai/generate:
+    post:
+      operationId: generateContent
+      tags: [ai]
+      summary: Generate AI content
+      description: Generate content using Gemini AI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateContentBody"
+      responses:
+        "200":
+          description: Generated content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenerateContentResponse"
+        "500":
+          description: AI generation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ai/generate-ideas:
+    post:
+      operationId: generateVideoIdeas
+      tags: [ai]
+      summary: Generate video ideas
+      description: Generate YouTube video ideas based on channel context
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateIdeasBody"
+      responses:
+        "200":
+          description: Generated video ideas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenerateIdeasResponse"
+        "500":
+          description: AI generation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ai/generate-script:
+    post:
+      operationId: generateScript
+      tags: [ai]
+      summary: Generate video script
+      description: Generate a full video script based on title and context
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateScriptBody"
+      responses:
+        "200":
+          description: Generated script
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenerateScriptResponse"
+        "500":
+          description: AI generation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ai/generate-titles:
+    post:
+      operationId: generateTitles
+      tags: [ai]
+      summary: Generate video titles
+      description: Generate optimized YouTube titles for a video concept
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateTitlesBody"
+      responses:
+        "200":
+          description: Generated titles
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenerateTitlesResponse"
+        "500":
+          description: AI generation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ai/generate-description:
+    post:
+      operationId: generateDescription
+      tags: [ai]
+      summary: Generate video description
+      description: Generate a YouTube video description with SEO keywords
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateDescriptionBody"
+      responses:
+        "200":
+          description: Generated description
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenerateDescriptionResponse"
+        "500":
+          description: AI generation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ai/weekly-plan:
+    post:
+      operationId: generateWeeklyPlan
+      tags: [ai]
+      summary: Generate weekly content plan
+      description: Generate a weekly content plan for the channel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateWeeklyPlanBody"
+      responses:
+        "200":
+          description: Generated weekly plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenerateWeeklyPlanResponse"
+        "500":
+          description: AI generation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    GenerateContentBody:
+      type: object
+      properties:
+        prompt:
+          type: string
+        systemPrompt:
+          type: string
+      required:
+        - prompt
+
+    GenerateContentResponse:
+      type: object
+      properties:
+        content:
+          type: string
+      required:
+        - content
+
+    GenerateIdeasBody:
+      type: object
+      properties:
+        channelName:
+          type: string
+        niche:
+          type: string
+        description:
+          type: string
+        count:
+          type: integer
+          default: 10
+        trendingTopics:
+          type: array
+          items:
+            type: string
+      required:
+        - channelName
+        - niche
+
+    VideoIdea:
+      type: object
+      properties:
+        title:
+          type: string
+        hook:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        estimatedViews:
+          type: string
+        difficulty:
+          type: string
+          enum: [Easy, Medium, Hard]
+        type:
+          type: string
+          enum: [Long, Short, Reel]
+      required:
+        - title
+        - hook
+        - tags
+        - difficulty
+        - type
+
+    GenerateIdeasResponse:
+      type: object
+      properties:
+        ideas:
+          type: array
+          items:
+            $ref: "#/components/schemas/VideoIdea"
+      required:
+        - ideas
+
+    GenerateScriptBody:
+      type: object
+      properties:
+        title:
+          type: string
+        channelName:
+          type: string
+        niche:
+          type: string
+        targetAudience:
+          type: string
+        duration:
+          type: string
+        language:
+          type: string
+          default: Hindi
+      required:
+        - title
+        - channelName
+        - niche
+
+    GenerateScriptResponse:
+      type: object
+      properties:
+        script:
+          type: string
+        sections:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              content:
+                type: string
+            required:
+              - name
+              - content
+      required:
+        - script
+
+    GenerateTitlesBody:
+      type: object
+      properties:
+        concept:
+          type: string
+        channelName:
+          type: string
+        niche:
+          type: string
+        count:
+          type: integer
+          default: 10
+      required:
+        - concept
+        - channelName
+        - niche
+
+    GenerateTitlesResponse:
+      type: object
+      properties:
+        titles:
+          type: array
+          items:
+            type: object
+            properties:
+              title:
+                type: string
+              clickbaitScore:
+                type: integer
+              seoScore:
+                type: integer
+            required:
+              - title
+              - clickbaitScore
+              - seoScore
+      required:
+        - titles
+
+    GenerateDescriptionBody:
+      type: object
+      properties:
+        title:
+          type: string
+        script:
+          type: string
+        channelName:
+          type: string
+        niche:
+          type: string
+        language:
+          type: string
+          default: Hindi
+      required:
+        - title
+        - channelName
+        - niche
+
+    GenerateDescriptionResponse:
+      type: object
+      properties:
+        description:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        hashtags:
+          type: array
+          items:
+            type: string
+      required:
+        - description
+        - tags
+        - hashtags
+
+    GenerateWeeklyPlanBody:
+      type: object
+      properties:
+        channelName:
+          type: string
+        niche:
+          type: string
+        goals:
+          type: string
+        postsPerWeek:
+          type: integer
+          default: 3
+      required:
+        - channelName
+        - niche
+
+    GenerateWeeklyPlanResponse:
+      type: object
+      properties:
+        plan:
+          type: array
+          items:
+            type: object
+            properties:
+              day:
+                type: string
+              videoType:
+                type: string
+              title:
+                type: string
+              notes:
+                type: string
+            required:
+              - day
+              - videoType
+              - title
+      required:
+        - plan

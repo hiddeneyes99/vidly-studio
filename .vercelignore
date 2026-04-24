@@ -1,0 +1,7 @@
+.local
+.cache
+.replit
+attached_assets
+*.log
+.DS_Store
+artifacts/mockup-sandbox

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "pnpm install --no-frozen-lockfile",
+  "buildCommand": "pnpm run build:vercel",
+  "outputDirectory": "artifacts/creator-os/dist/public",
+  "framework": null,
+  "rewrites": [
+    { "source": "/((?!api|assets|.*\\..*).*)", "destination": "/index.html" }
+  ],
+  "functions": {
+    "api/[[...path]].mjs": {
+      "runtime": "@vercel/node@5.1.0",
+      "maxDuration": 60,
+      "includeFiles": "artifacts/api-server/dist/**"
+    }
+  }
+}

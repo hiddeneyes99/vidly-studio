@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Creator OS"
+version = "1.0.0"
+id = "artifacts/creator-os"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18152
+
+[services.development]
+run = "pnpm --filter @workspace/creator-os run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/creator-os", "run", "build" ]
+publicDir = "artifacts/creator-os/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18152"
+BASE_PATH = "/"
