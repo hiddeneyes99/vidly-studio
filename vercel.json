@@ -8,7 +8,7 @@
     { "source": "/((?!api|assets|.*\\..*).*)", "destination": "/index.html" }
   ],
   "functions": {
-    "api/[...path].mjs": {
+    "api/*.mjs": {
       "runtime": "@vercel/node@5.1.0",
       "maxDuration": 60,
       "includeFiles": "artifacts/api-server/dist/**"
