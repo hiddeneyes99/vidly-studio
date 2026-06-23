@@ -71,7 +71,6 @@ function rowToMemory(r: MemoryRow): ChatMemory {
 function isMissingTableError(err: unknown): boolean {
   const code = (err as { code?: string })?.code;
   const msg = (err as { message?: string })?.message?.toLowerCase() ?? "";
-  // PG error 42P01 = undefined_table; PostgREST returns PGRST205 / 404 too
   return (
     code === "42P01" ||
     code === "PGRST205" ||
@@ -90,7 +89,6 @@ async function migrateLegacyChat(
   migrationAttempted = true;
   if (!legacyConvs.length && !legacyMsgs.length) return;
 
-  // Only migrate if the new tables are completely empty
   const { count, error } = await supabase
     .from(CONV_TABLE)
     .select("id", { count: "exact", head: true });
@@ -111,7 +109,6 @@ async function migrateLegacyChat(
   }
 
   if (legacyMsgs.length) {
-    // Insert in chunks of 200
     const msgRows = legacyMsgs.map((m) => ({
       id: m.id,
       conversation_id: m.conversationId,
@@ -175,7 +172,6 @@ export function useChatData(legacy?: {
       return;
     }
 
-    // Memories table is optional — if missing, show setup state
     const { data: memData, error: memErr } = await supabase
       .from(MEM_TABLE)
       .select("*")
@@ -196,7 +192,6 @@ export function useChatData(legacy?: {
     setStatus("ready");
   }, []);
 
-  // Initial load + (one-time) legacy migration
   useEffect(() => {
     mounted.current = true;
     (async () => {
@@ -204,7 +199,6 @@ export function useChatData(legacy?: {
       if (legacy && (legacy.conversations.length || legacy.messages.length)) {
         try {
           await migrateLegacyChat(legacy.conversations, legacy.messages);
-          // Reload to surface migrated rows
           await reload();
         } catch (err) {
           console.warn("[chat] migration failed:", err);
@@ -227,7 +221,6 @@ export function useChatData(legacy?: {
         createdAt: now,
         updatedAt: now,
       };
-      // Optimistic update
       setConversations((prev) => [conv, ...prev]);
       const { error } = await supabase.from(CONV_TABLE).insert({
         id: conv.id,
@@ -273,7 +266,6 @@ export function useChatData(legacy?: {
 
   const deleteConversation = useCallback(
     async (id: string): Promise<void> => {
-      // Optimistic
       setMessages((prev) => prev.filter((m) => m.conversationId !== id));
       setConversations((prev) => prev.filter((c) => c.id !== id));
       const { error } = await supabase.from(CONV_TABLE).delete().eq("id", id);

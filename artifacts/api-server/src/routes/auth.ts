@@ -1,12 +1,31 @@
 import { Router, type IRouter } from "express";
-import bcrypt from "bcryptjs";
-import { eq } from "drizzle-orm";
-import { db, users } from "@workspace/db";
+import crypto from "crypto";
 import { signSession, requireAuth, SESSION_DAYS, type AuthedRequest } from "../middlewares/auth";
 
 const router: IRouter = Router();
 
-router.post("/auth/login", async (req, res) => {
+function getAdminCreds(): { username: string; password: string } | null {
+  const username = process.env["ADMIN_USERNAME"];
+  const password = process.env["ADMIN_PASSWORD"];
+  if (!username || !password) return null;
+  return { username, password };
+}
+
+function safeEqual(a: string, b: string): boolean {
+  try {
+    const aBuf = Buffer.from(a, "utf8");
+    const bBuf = Buffer.from(b, "utf8");
+    if (aBuf.length !== bBuf.length) {
+      crypto.timingSafeEqual(aBuf, aBuf);
+      return false;
+    }
+    return crypto.timingSafeEqual(aBuf, bBuf);
+  } catch {
+    return false;
+  }
+}
+
+router.post("/auth/login", (req, res) => {
   const { username, password } = req.body ?? {};
 
   if (typeof username !== "string" || typeof password !== "string") {
@@ -14,38 +33,28 @@ router.post("/auth/login", async (req, res) => {
     return;
   }
 
-  try {
-    const found = await db
-      .select({
-        id: users.id,
-        username: users.username,
-        passwordHash: users.passwordHash,
-      })
-      .from(users)
-      .where(eq(users.username, username))
-      .limit(1);
-
-    const user = found[0];
-    if (!user) {
-      res.status(401).json({ error: "Invalid username or password" });
-      return;
-    }
-
-    const passOk = await bcrypt.compare(password, user.passwordHash);
-    if (!passOk) {
-      res.status(401).json({ error: "Invalid username or password" });
-      return;
-    }
-
-    const token = signSession(user.username);
-    res.json({
-      token,
-      expiresInDays: SESSION_DAYS,
-      user: { username: user.username },
+  const creds = getAdminCreds();
+  if (!creds) {
+    res.status(503).json({
+      error: "Server not configured. Set ADMIN_USERNAME and ADMIN_PASSWORD in Replit Secrets.",
     });
-  } catch (err) {
-    res.status(500).json({ error: "Login failed" });
+    return;
   }
+
+  const usernameOk = safeEqual(username, creds.username);
+  const passwordOk = safeEqual(password, creds.password);
+
+  if (!usernameOk || !passwordOk) {
+    res.status(401).json({ error: "Invalid username or password" });
+    return;
+  }
+
+  const token = signSession(creds.username);
+  res.json({
+    token,
+    expiresInDays: SESSION_DAYS,
+    user: { username: creds.username },
+  });
 });
 
 router.get("/auth/me", requireAuth, (req: AuthedRequest, res) => {
@@ -56,58 +65,10 @@ router.post("/auth/logout", requireAuth, (_req, res) => {
   res.json({ ok: true });
 });
 
-router.post("/auth/change-password", requireAuth, async (req: AuthedRequest, res) => {
-  const { currentPassword, newPassword } = req.body ?? {};
-
-  if (
-    typeof currentPassword !== "string" ||
-    typeof newPassword !== "string" ||
-    newPassword.length < 6
-  ) {
-    res
-      .status(400)
-      .json({ error: "currentPassword and newPassword (min 6 chars) required" });
-    return;
-  }
-
-  const username = req.userId;
-  if (!username) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
-
-  try {
-    const found = await db
-      .select({
-        id: users.id,
-        passwordHash: users.passwordHash,
-      })
-      .from(users)
-      .where(eq(users.username, username))
-      .limit(1);
-
-    const user = found[0];
-    if (!user) {
-      res.status(404).json({ error: "User not found" });
-      return;
-    }
-
-    const ok = await bcrypt.compare(currentPassword, user.passwordHash);
-    if (!ok) {
-      res.status(401).json({ error: "Current password is incorrect" });
-      return;
-    }
-
-    const newHash = await bcrypt.hash(newPassword, 10);
-    await db
-      .update(users)
-      .set({ passwordHash: newHash, updatedAt: new Date() })
-      .where(eq(users.id, user.id));
-
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ error: "Failed to change password" });
-  }
+router.post("/auth/change-password", requireAuth, (_req, res) => {
+  res.status(400).json({
+    error: "Password change via API is disabled. Update ADMIN_PASSWORD in Replit Secrets instead.",
+  });
 });
 
 export default router;

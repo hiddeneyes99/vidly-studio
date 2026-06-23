@@ -264,7 +264,6 @@ async function loadFromSupabase(): Promise<CreatorState> {
     return defaultState;
   }
 
-  // Deep-merge channel so new fields get defaults if missing in old saves
   const stored = data.data as Partial<CreatorState>;
   return {
     ...defaultState,
