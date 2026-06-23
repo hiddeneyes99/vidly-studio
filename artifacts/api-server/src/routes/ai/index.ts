@@ -642,4 +642,76 @@ JSON schema:
   }
 });
 
+// ============ Streaming Chat Endpoint ============
+router.post("/ai/stream", async (req, res) => {
+  const { prompt, systemInstruction, attachments } = req.body ?? {};
+  if (!prompt || typeof prompt !== "string") {
+    res.status(400).json({ error: "Missing 'prompt'" });
+    return;
+  }
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  const parts: any[] = [];
+  if (Array.isArray(attachments)) {
+    for (const att of attachments) {
+      if (att?.mimeType && att?.data) {
+        parts.push({ inlineData: { mimeType: att.mimeType, data: att.data } });
+      }
+    }
+  }
+  parts.push({ text: prompt });
+
+  const config: any = { maxOutputTokens: 8192 };
+  if (typeof systemInstruction === "string" && systemInstruction.length > 0) {
+    config.systemInstruction = systemInstruction;
+  }
+
+  const STREAM_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest"];
+
+  for (const model of STREAM_MODELS) {
+    try {
+      const streamResult = await (ai.models as any).generateContentStream({
+        model,
+        contents: [{ role: "user", parts }],
+        config,
+      });
+      for await (const chunk of streamResult) {
+        const text = typeof chunk.text === "function" ? chunk.text() : (chunk.text ?? "");
+        if (text) res.write(`data: ${JSON.stringify({ text })}\n\n`);
+      }
+      res.write("data: [DONE]\n\n");
+      res.end();
+      return;
+    } catch (err: any) {
+      const status = err?.status ?? err?.response?.status;
+      const retryable = status === 503 || status === 429 || status >= 500;
+      if (!retryable) break;
+    }
+  }
+
+  // Fallback: regular generation, send in chunks
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [{ role: "user", parts }],
+      config,
+    });
+    const fullText = response.text ?? "";
+    const words = fullText.split(" ");
+    for (let i = 0; i < words.length; i += 5) {
+      const chunk = words.slice(i, i + 5).join(" ") + (i + 5 < words.length ? " " : "");
+      res.write(`data: ${JSON.stringify({ text: chunk })}\n\n`);
+    }
+    res.write("data: [DONE]\n\n");
+  } catch (err: any) {
+    res.write(`data: ${JSON.stringify({ error: err?.message ?? "Generation failed" })}\n\n`);
+  }
+  res.end();
+});
+
 export default router;

@@ -30,6 +30,7 @@ import {
   Sparkles,
   MessageCircle,
   BadgeCheck,
+  BotMessageSquare,
 } from "lucide-react";
 
 const VERIFIED_THRESHOLD = 10_000;
@@ -46,6 +47,7 @@ const NAV_ITEMS = [
   { name: "Schedule", href: "/schedule", icon: Calendar },
   { name: "Script Writer", href: "/scripts", icon: FileText },
   { name: "AI Studio", href: "/ai", icon: Wand2 },
+  { name: "AI Chat", href: "/chat", icon: BotMessageSquare },
   { name: "Comment Helper", href: "/comments", icon: MessageCircle },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
@@ -53,7 +55,8 @@ const NAV_ITEMS = [
 const MOBILE_PRIMARY = [
   { name: "Home", href: "/", icon: LayoutDashboard },
   { name: "Channel", href: "/youtube", icon: PlaySquare },
-  { name: "AI", href: "/ai", icon: Sparkles, highlight: true },
+  { name: "AI Chat", href: "/chat", icon: BotMessageSquare, highlight: true },
+  { name: "AI Studio", href: "/ai", icon: Sparkles },
   { name: "Ideas", href: "/ideas", icon: Lightbulb },
 ];
 

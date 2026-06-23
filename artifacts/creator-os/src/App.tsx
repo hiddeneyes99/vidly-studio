@@ -20,6 +20,7 @@ import Goals from "@/pages/goals";
 import Schedule from "@/pages/schedule";
 import ScriptWriter from "@/pages/scripts";
 import AiStudio from "@/pages/ai";
+import ChatPage from "@/pages/chat";
 import Comments from "@/pages/comments";
 import Settings from "@/pages/settings";
 
@@ -39,6 +40,7 @@ function Router() {
         <Route path="/schedule" component={Schedule} />
         <Route path="/scripts" component={ScriptWriter} />
         <Route path="/ai" component={AiStudio} />
+        <Route path="/chat" component={ChatPage} />
         <Route path="/comments" component={Comments} />
         <Route path="/settings" component={Settings} />
         <Route component={NotFound} />
