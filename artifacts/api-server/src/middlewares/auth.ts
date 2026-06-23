@@ -3,26 +3,29 @@ import jwt from "jsonwebtoken";
 
 export type AuthedRequest = Request & { userId?: string };
 
-const JWT_SECRET = process.env["JWT_SECRET"];
-if (!JWT_SECRET) {
-  throw new Error(
-    "JWT_SECRET environment variable is required. Set it via Replit Secrets.",
-  );
-}
-
-const SECRET: string = JWT_SECRET;
-
 export const SESSION_DAYS = 7;
 
+function getSecret(): string {
+  const secret = process.env["JWT_SECRET"];
+  if (!secret) {
+    throw new Error(
+      "JWT_SECRET is not configured. Add it to Replit Secrets.",
+    );
+  }
+  return secret;
+}
+
 export function signSession(userId: string): string {
-  return jwt.sign({ sub: userId }, SECRET, {
+  return jwt.sign({ sub: userId }, getSecret(), {
     expiresIn: `${SESSION_DAYS}d`,
   });
 }
 
 export function verifySession(token: string): { sub: string } | null {
   try {
-    const payload = jwt.verify(token, SECRET) as jwt.JwtPayload;
+    const secret = process.env["JWT_SECRET"];
+    if (!secret) return null;
+    const payload = jwt.verify(token, secret) as jwt.JwtPayload;
     if (typeof payload.sub !== "string") return null;
     return { sub: payload.sub };
   } catch {

@@ -1,6 +1,14 @@
-import { useState, type FormEvent } from "react";
-import { Loader2, LogIn } from "lucide-react";
+import { useState, useEffect, type FormEvent } from "react";
+import { Loader2, LogIn, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/components/auth-context";
+import { API_BASE } from "@/lib/auth";
+
+type SetupStatus = {
+  jwtConfigured: boolean;
+  adminConfigured: boolean;
+  geminiConfigured: boolean;
+  dbConfigured: boolean;
+};
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -8,6 +16,20 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [setup, setSetup] = useState<SetupStatus | null>(null);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/auth/setup-status`)
+      .then((r) => r.json())
+      .then((d) => setSetup(d))
+      .catch(() => setSetup(null));
+  }, []);
+
+  const missingSecrets: string[] = [];
+  if (setup) {
+    if (!setup.jwtConfigured) missingSecrets.push("JWT_SECRET");
+    if (!setup.adminConfigured) missingSecrets.push("ADMIN_USERNAME", "ADMIN_PASSWORD");
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -38,6 +60,23 @@ export default function LoginPage() {
             </p>
           </div>
         </div>
+
+        {missingSecrets.length > 0 && (
+          <div className="mb-4 rounded-xl border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-xs text-yellow-400 space-y-1">
+            <div className="flex items-center gap-1.5 font-semibold">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              Server setup incomplete
+            </div>
+            <p className="text-yellow-400/80">
+              Add these to <strong>Replit Secrets</strong> then restart the server:
+            </p>
+            <ul className="list-disc list-inside space-y-0.5 font-mono">
+              {missingSecrets.map((s) => (
+                <li key={s}>{s}</li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <form
           onSubmit={onSubmit}

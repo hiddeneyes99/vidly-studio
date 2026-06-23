@@ -29,19 +29,27 @@ router.post("/auth/login", (req, res) => {
   const { username, password } = req.body ?? {};
 
   if (typeof username !== "string" || typeof password !== "string") {
-    res.status(400).json({ error: "username and password required" });
+    res.status(400).json({ error: "Username and password required" });
+    return;
+  }
+
+  // Check JWT_SECRET first
+  if (!process.env["JWT_SECRET"]) {
+    res.status(503).json({
+      error: "Server not configured: JWT_SECRET is missing. Add it to Replit Secrets.",
+    });
     return;
   }
 
   const creds = getAdminCreds();
   if (!creds) {
     res.status(503).json({
-      error: "Server not configured. Set ADMIN_USERNAME and ADMIN_PASSWORD in Replit Secrets.",
+      error: "Server not configured: ADMIN_USERNAME and ADMIN_PASSWORD are missing. Add them to Replit Secrets.",
     });
     return;
   }
 
-  const usernameOk = safeEqual(username, creds.username);
+  const usernameOk = safeEqual(username.trim(), creds.username.trim());
   const passwordOk = safeEqual(password, creds.password);
 
   if (!usernameOk || !passwordOk) {
@@ -49,12 +57,18 @@ router.post("/auth/login", (req, res) => {
     return;
   }
 
-  const token = signSession(creds.username);
-  res.json({
-    token,
-    expiresInDays: SESSION_DAYS,
-    user: { username: creds.username },
-  });
+  try {
+    const token = signSession(creds.username);
+    res.json({
+      token,
+      expiresInDays: SESSION_DAYS,
+      user: { username: creds.username },
+    });
+  } catch (err: any) {
+    res.status(503).json({
+      error: "Server not configured: " + (err?.message ?? "Unknown error"),
+    });
+  }
 });
 
 router.get("/auth/me", requireAuth, (req: AuthedRequest, res) => {
@@ -68,6 +82,20 @@ router.post("/auth/logout", requireAuth, (_req, res) => {
 router.post("/auth/change-password", requireAuth, (_req, res) => {
   res.status(400).json({
     error: "Password change via API is disabled. Update ADMIN_PASSWORD in Replit Secrets instead.",
+  });
+});
+
+// Setup status — tells the frontend which secrets are configured
+router.get("/auth/setup-status", (_req, res) => {
+  res.json({
+    jwtConfigured: !!process.env["JWT_SECRET"],
+    adminConfigured: !!(process.env["ADMIN_USERNAME"] && process.env["ADMIN_PASSWORD"]),
+    geminiConfigured: !!(
+      process.env["GEMINI_API_KEY"] ||
+      process.env["GOOGLE_GENAI_API_KEY"] ||
+      process.env["AI_INTEGRATIONS_GEMINI_BASE_URL"]
+    ),
+    dbConfigured: !!(process.env["DATABASE_URL"] || process.env["SUPABASE_DB_URL"]),
   });
 });
 
