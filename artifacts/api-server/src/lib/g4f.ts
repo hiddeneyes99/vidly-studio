@@ -8,21 +8,17 @@ async function getClient() {
   return _client;
 }
 
-export async function callText(
+function buildMessages(
   prompt: string,
   options: {
     system?: string;
-    jsonMode?: boolean;
     images?: Array<{ mimeType: string; data: string }>;
-  } = {},
-): Promise<string> {
-  const client = await getClient();
+  },
+) {
   const messages: any[] = [];
-
   if (options.system) {
     messages.push({ role: "system", content: options.system });
   }
-
   if (options.images && options.images.length > 0) {
     const content: any[] = options.images.map((img) => ({
       type: "image_url",
@@ -33,14 +29,37 @@ export async function callText(
   } else {
     messages.push({ role: "user", content: prompt });
   }
+  return messages;
+}
 
-  const params: any = { model: "gpt-4o", messages };
-  if (options.jsonMode) {
-    params.response_format = { type: "json_object" };
+export async function callText(
+  prompt: string,
+  options: {
+    system?: string;
+    jsonMode?: boolean;
+    images?: Array<{ mimeType: string; data: string }>;
+  } = {},
+): Promise<string> {
+  const client = await getClient();
+  const messages = buildMessages(prompt, options);
+
+  const stream = await client.chat.completions.create({
+    model: "gpt-4o",
+    messages,
+    stream: true,
+  });
+
+  let result = "";
+  for await (const chunk of stream) {
+    result += chunk.choices[0]?.delta?.content ?? "";
   }
 
-  const response = await client.chat.completions.create(params);
-  return response.choices[0].message.content ?? "";
+  if (options.jsonMode) {
+    const match = result.match(/```json\s*([\s\S]*?)```/) ?? result.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+    if (match) result = match[1] ?? match[0];
+  }
+
+  return result.trim();
 }
 
 export async function callImage(
@@ -70,22 +89,7 @@ export async function* streamText(
   } = {},
 ): AsyncGenerator<string> {
   const client = await getClient();
-  const messages: any[] = [];
-
-  if (options.system) {
-    messages.push({ role: "system", content: options.system });
-  }
-
-  if (options.images && options.images.length > 0) {
-    const content: any[] = options.images.map((img) => ({
-      type: "image_url",
-      image_url: { url: `data:${img.mimeType};base64,${img.data}` },
-    }));
-    content.push({ type: "text", text: prompt });
-    messages.push({ role: "user", content });
-  } else {
-    messages.push({ role: "user", content: prompt });
-  }
+  const messages = buildMessages(prompt, options);
 
   const stream = await client.chat.completions.create({
     model: "gpt-4o",
