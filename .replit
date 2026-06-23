@@ -84,3 +84,5 @@ channel = "stable-25_05"
 
 [userenv.shared]
 VITE_YOUTUBE_API_KEY = "AIzaSyDu11_DmRt_6IY0YgBJdoaoC2KgOnZ9zkY"
+VITE_SUPABASE_URL = "https://sfftycfpxuemgiudoxgm.supabase.co"
+VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmZnR5Y2ZweHVlbWdpdWRveGdtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5MzMzMjUsImV4cCI6MjA5MjUwOTMyNX0.PeWgM942_6--Yw3TazzyTBIE0xSllzUPeofGHvy3eXk"
