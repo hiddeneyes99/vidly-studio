@@ -1,101 +1,85 @@
 import { Router, type IRouter } from "express";
 import crypto from "crypto";
-import { signSession, requireAuth, SESSION_DAYS, type AuthedRequest } from "../middlewares/auth";
+import {
+  signSession,
+  requireAuth,
+  SESSION_DAYS,
+  getAdminCreds,
+  type AuthedRequest,
+} from "../middlewares/auth";
 
 const router: IRouter = Router();
-
-function getAdminCreds(): { username: string; password: string } | null {
-  const username = process.env["ADMIN_USERNAME"];
-  const password = process.env["ADMIN_PASSWORD"];
-  if (!username || !password) return null;
-  return { username, password };
-}
 
 function safeEqual(a: string, b: string): boolean {
   try {
     const aBuf = Buffer.from(a, "utf8");
     const bBuf = Buffer.from(b, "utf8");
-    if (aBuf.length !== bBuf.length) {
-      crypto.timingSafeEqual(aBuf, aBuf);
-      return false;
-    }
-    return crypto.timingSafeEqual(aBuf, bBuf);
+    // Always run timingSafeEqual to prevent timing attacks even on length mismatch
+    const len = Math.max(aBuf.length, bBuf.length);
+    const pa = Buffer.alloc(len);
+    const pb = Buffer.alloc(len);
+    aBuf.copy(pa);
+    bBuf.copy(pb);
+    const eq = crypto.timingSafeEqual(pa, pb);
+    return eq && aBuf.length === bBuf.length;
   } catch {
     return false;
   }
 }
 
 router.post("/auth/login", (req, res) => {
-  const { username, password } = req.body ?? {};
+  const body = req.body ?? {};
+  const username = typeof body.username === "string" ? body.username.trim() : "";
+  const password = typeof body.password === "string" ? body.password : "";
 
-  if (typeof username !== "string" || typeof password !== "string") {
-    res.status(400).json({ error: "Username and password required" });
-    return;
-  }
-
-  // Check JWT_SECRET first
-  if (!process.env["JWT_SECRET"]) {
-    res.status(503).json({
-      error: "Server not configured: JWT_SECRET is missing. Add it to Replit Secrets.",
-    });
+  if (!username || !password) {
+    res.status(400).json({ error: "Username and password are required." });
     return;
   }
 
   const creds = getAdminCreds();
   if (!creds) {
     res.status(503).json({
-      error: "Server not configured: ADMIN_USERNAME and ADMIN_PASSWORD are missing. Add them to Replit Secrets.",
+      error:
+        "Server is not configured yet. Add ADMIN_USERNAME and ADMIN_PASSWORD to Replit Secrets, then restart the server.",
     });
     return;
   }
 
-  const usernameOk = safeEqual(username.trim(), creds.username.trim());
+  const usernameOk = safeEqual(username, creds.username);
   const passwordOk = safeEqual(password, creds.password);
 
   if (!usernameOk || !passwordOk) {
-    res.status(401).json({ error: "Invalid username or password" });
+    res.status(401).json({ error: "Incorrect username or password." });
     return;
   }
 
-  try {
-    const token = signSession(creds.username);
-    res.json({
-      token,
-      expiresInDays: SESSION_DAYS,
-      user: { username: creds.username },
-    });
-  } catch (err: any) {
-    res.status(503).json({
-      error: "Server not configured: " + (err?.message ?? "Unknown error"),
-    });
-  }
+  const token = signSession(creds.username);
+  res.json({
+    token,
+    expiresInDays: SESSION_DAYS,
+    user: { username: creds.username },
+  });
 });
 
 router.get("/auth/me", requireAuth, (req: AuthedRequest, res) => {
   res.json({ user: { username: req.userId } });
 });
 
-router.post("/auth/logout", requireAuth, (_req, res) => {
+router.post("/auth/logout", (_req, res) => {
   res.json({ ok: true });
 });
 
-router.post("/auth/change-password", requireAuth, (_req, res) => {
-  res.status(400).json({
-    error: "Password change via API is disabled. Update ADMIN_PASSWORD in Replit Secrets instead.",
-  });
-});
-
-// Setup status — tells the frontend which secrets are configured
 router.get("/auth/setup-status", (_req, res) => {
+  const creds = getAdminCreds();
   res.json({
-    jwtConfigured: !!process.env["JWT_SECRET"],
-    adminConfigured: !!(process.env["ADMIN_USERNAME"] && process.env["ADMIN_PASSWORD"]),
+    adminConfigured: !!creds,
+    jwtConfigured: !!(process.env["JWT_SECRET"] && process.env["JWT_SECRET"].length >= 16),
     geminiConfigured: !!(
       process.env["GEMINI_API_KEY"] ||
       process.env["GOOGLE_GENAI_API_KEY"] ||
       process.env["AI_INTEGRATIONS_GEMINI_BASE_URL"]
     ),
-    dbConfigured: !!(process.env["DATABASE_URL"] || process.env["SUPABASE_DB_URL"]),
   });
 });
 
