@@ -1,29 +1,37 @@
 import { GoogleGenAI, Modality } from "@google/genai";
 
-const apiKey =
-  process.env.GEMINI_API_KEY ||
-  process.env.GOOGLE_GENAI_API_KEY ||
-  process.env.VITE_GEMINI_API_KEY;
+function getAi(): GoogleGenAI {
+  const apiKey =
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_GENAI_API_KEY ||
+    process.env.VITE_GEMINI_API_KEY;
 
-if (!apiKey) {
-  throw new Error(
-    "GEMINI_API_KEY must be set. Get a key at https://aistudio.google.com/apikey and add it to your environment.",
-  );
+  if (!apiKey) {
+    throw new Error(
+      "GEMINI_API_KEY is not set. Add it to Replit Secrets to enable AI features.",
+    );
+  }
+
+  const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+
+  return new GoogleGenAI({
+    apiKey,
+    ...(baseUrl
+      ? { httpOptions: { apiVersion: "", baseUrl } }
+      : {}),
+  });
 }
 
-const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
-
-export const ai = new GoogleGenAI({
-  apiKey,
-  ...(baseUrl
-    ? { httpOptions: { apiVersion: "", baseUrl } }
-    : {}),
+export const ai = new Proxy({} as GoogleGenAI, {
+  get(_target, prop) {
+    return (getAi() as any)[prop];
+  },
 });
 
 export async function generateImage(
   prompt: string
 ): Promise<{ b64_json: string; mimeType: string }> {
-  const response = await ai.models.generateContent({
+  const response = await getAi().models.generateContent({
     model: "gemini-2.5-flash-image",
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     config: {
