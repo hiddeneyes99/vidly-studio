@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { ai, generateImage, Modality } from "@workspace/integrations-gemini-ai";
+import { callText, callImage, streamText } from "../../lib/g4f.js";
 import {
   GenerateContentBody,
   GenerateVideoIdeasBody,
@@ -19,51 +19,25 @@ router.post("/ai/raw", async (req, res) => {
       return;
     }
 
-    const config: any = { maxOutputTokens: 8192 };
-    if (schema) {
-      config.responseMimeType = "application/json";
-      config.responseSchema = schema;
-    }
-    if (systemInstruction) {
-      config.systemInstruction = systemInstruction;
-    }
-
-    // Build multimodal parts: attachments first (so the model "sees" them), then prompt
-    const parts: any[] = [];
+    const images: Array<{ mimeType: string; data: string }> = [];
     if (Array.isArray(attachments)) {
       for (const att of attachments) {
-        if (!att || typeof att !== "object") continue;
-        const { mimeType, data } = att as { mimeType?: string; data?: string };
-        if (typeof mimeType === "string" && typeof data === "string" && data.length > 0) {
-          parts.push({ inlineData: { mimeType, data } });
+        if (att?.mimeType && att?.data) {
+          images.push({ mimeType: att.mimeType, data: att.data });
         }
       }
     }
-    parts.push({ text: prompt });
 
-    const MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest"];
-    let lastErr: any;
-    for (const model of MODELS) {
-      try {
-        const response = await ai.models.generateContent({
-          model,
-          contents: [{ role: "user", parts }],
-          config,
-        });
-        res.json({ text: response.text ?? "" });
-        return;
-      } catch (err: any) {
-        lastErr = err;
-        const status = err?.status ?? err?.response?.status;
-        const retryable = status === 503 || status === 429 || status >= 500;
-        if (!retryable) break;
-      }
-    }
-    console.error("[/ai/raw] failed", lastErr);
-    res.status(502).json({ error: lastErr?.message ?? "Gemini call failed" });
+    const text = await callText(prompt, {
+      system: systemInstruction,
+      jsonMode: !!schema,
+      images: images.length > 0 ? images : undefined,
+    });
+
+    res.json({ text });
   } catch (err: any) {
-    console.error("[/ai/raw] unhandled", err);
-    res.status(500).json({ error: err?.message ?? "Server error" });
+    console.error("[/ai/raw] failed", err);
+    res.status(502).json({ error: err?.message ?? "AI call failed" });
   }
 });
 
@@ -75,21 +49,8 @@ router.post("/ai/generate", async (req, res) => {
   }
 
   const { prompt, systemPrompt } = parsed.data;
-
-  const contents = [];
-  if (systemPrompt) {
-    contents.push({ role: "user" as const, parts: [{ text: systemPrompt }] });
-    contents.push({ role: "model" as const, parts: [{ text: "Understood." }] });
-  }
-  contents.push({ role: "user" as const, parts: [{ text: prompt }] });
-
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents,
-    config: { maxOutputTokens: 8192 },
-  });
-
-  res.json({ content: response.text ?? "" });
+  const text = await callText(prompt, { system: systemPrompt });
+  res.json({ content: text });
 });
 
 router.post("/ai/generate-ideas", async (req, res) => {
@@ -139,18 +100,13 @@ For each idea provide:
 
 Return a JSON object with an "ideas" array. No extra text, just the JSON.`;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    config: {
-      maxOutputTokens: 8192,
-      responseMimeType: "application/json",
-    },
-  });
-
-  const text = response.text ?? "{}";
-  const data = JSON.parse(text);
-  res.json({ ideas: data.ideas ?? [] });
+  try {
+    const text = await callText(prompt, { jsonMode: true });
+    const data = JSON.parse(text);
+    res.json({ ideas: data.ideas ?? [] });
+  } catch (err: any) {
+    res.status(502).json({ error: err?.message ?? "Idea generation failed" });
+  }
 });
 
 router.post("/ai/generate-script", async (req, res) => {
@@ -180,18 +136,13 @@ Return as JSON with:
 
 No extra text, just the JSON.`;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    config: {
-      maxOutputTokens: 8192,
-      responseMimeType: "application/json",
-    },
-  });
-
-  const text = response.text ?? "{}";
-  const data = JSON.parse(text);
-  res.json({ script: data.script ?? "", sections: data.sections ?? [] });
+  try {
+    const text = await callText(prompt, { jsonMode: true });
+    const data = JSON.parse(text);
+    res.json({ script: data.script ?? "", sections: data.sections ?? [] });
+  } catch (err: any) {
+    res.status(502).json({ error: err?.message ?? "Script generation failed" });
+  }
 });
 
 router.post("/ai/generate-titles", async (req, res) => {
@@ -214,18 +165,13 @@ For each title provide:
 Good titles for this niche are specific, create curiosity, and include relevant keywords.
 Return as JSON with a "titles" array. No extra text, just the JSON.`;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    config: {
-      maxOutputTokens: 4096,
-      responseMimeType: "application/json",
-    },
-  });
-
-  const text = response.text ?? "{}";
-  const data = JSON.parse(text);
-  res.json({ titles: data.titles ?? [] });
+  try {
+    const text = await callText(prompt, { jsonMode: true });
+    const data = JSON.parse(text);
+    res.json({ titles: data.titles ?? [] });
+  } catch (err: any) {
+    res.status(502).json({ error: err?.message ?? "Title generation failed" });
+  }
 });
 
 router.post("/ai/generate-description", async (req, res) => {
@@ -249,22 +195,17 @@ Create:
 The description should start with the most important info, include timestamps if possible, and end with a call to action.
 Return as JSON with "description", "tags", and "hashtags" fields. No extra text, just the JSON.`;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    config: {
-      maxOutputTokens: 4096,
-      responseMimeType: "application/json",
-    },
-  });
-
-  const text = response.text ?? "{}";
-  const data = JSON.parse(text);
-  res.json({
-    description: data.description ?? "",
-    tags: data.tags ?? [],
-    hashtags: data.hashtags ?? [],
-  });
+  try {
+    const text = await callText(prompt, { jsonMode: true });
+    const data = JSON.parse(text);
+    res.json({
+      description: data.description ?? "",
+      tags: data.tags ?? [],
+      hashtags: data.hashtags ?? [],
+    });
+  } catch (err: any) {
+    res.status(502).json({ error: err?.message ?? "Description generation failed" });
+  }
 });
 
 router.post("/ai/weekly-plan", async (req, res) => {
@@ -290,18 +231,13 @@ For each planned video:
 
 Return as JSON with a "plan" array. No extra text, just the JSON.`;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    config: {
-      maxOutputTokens: 4096,
-      responseMimeType: "application/json",
-    },
-  });
-
-  const text = response.text ?? "{}";
-  const data = JSON.parse(text);
-  res.json({ plan: data.plan ?? [] });
+  try {
+    const text = await callText(prompt, { jsonMode: true });
+    const data = JSON.parse(text);
+    res.json({ plan: data.plan ?? [] });
+  } catch (err: any) {
+    res.status(502).json({ error: err?.message ?? "Weekly plan generation failed" });
+  }
 });
 
 const STRATEGIST_SYSTEM = `You are a viral YouTube thumbnail strategist obsessed with Click-Through Rate (CTR). You think like MrBeast's thumbnail designer. Every element must earn its place — if it doesn't increase CTR, you remove it.
@@ -331,7 +267,7 @@ Output STRICT JSON only — no markdown, no commentary. Schema:
   "imagePrompt": string
 }
 
-The "imagePrompt" must be a complete, vivid, ready-to-execute prompt for an image generator (Nano Banana / DALL-E). It must mention: 16:9 1280x720 aspect, full-bleed (no borders/watermarks), photorealistic, dramatic studio lighting, exact face expression and gesture, where the text overlay sits and what it says, the 2-3 background colors, props (phone mockup / money / graph / arrow), and the focal point that grabs the eye first.`;
+The "imagePrompt" must be a complete, vivid, ready-to-execute prompt for an image generator. It must mention: 16:9 1280x720 aspect, full-bleed (no borders/watermarks), photorealistic, dramatic studio lighting, exact face expression and gesture, where the text overlay sits and what it says, the 2-3 background colors, props (phone mockup / money / graph / arrow), and the focal point that grabs the eye first.`;
 
 const STYLE_PRESETS: Record<string, string> = {
   money:
@@ -353,9 +289,10 @@ router.post("/ai/thumbnail-strategy", async (req, res) => {
       res.status(400).json({ error: "Missing idea.title" });
       return;
     }
-    const styleNote = stylePreset && STYLE_PRESETS[stylePreset]
-      ? `\nStyle preset: ${STYLE_PRESETS[stylePreset]}`
-      : "";
+    const styleNote =
+      stylePreset && STYLE_PRESETS[stylePreset]
+        ? `\nStyle preset: ${STYLE_PRESETS[stylePreset]}`
+        : "";
     const userMsg = `Video idea:
 Title: "${idea.title}"
 Hook: ${idea.hook ?? ""}
@@ -364,20 +301,8 @@ Niche: ${idea.niche ?? "general"}${styleNote}
 
 Design the highest-CTR thumbnail concept following the 8 pillars. Be specific and concrete.`;
 
-    const resp = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [{ role: "user", parts: [{ text: userMsg }] }],
-      config: {
-        systemInstruction: STRATEGIST_SYSTEM,
-        responseMimeType: "application/json",
-      },
-    });
-    let strategy: any;
-    try {
-      strategy = JSON.parse(resp.text ?? "{}");
-    } catch {
-      throw new Error("Strategist returned invalid JSON");
-    }
+    const text = await callText(userMsg, { system: STRATEGIST_SYSTEM, jsonMode: true });
+    const strategy = JSON.parse(text);
     res.json({ strategy });
   } catch (err: any) {
     console.error("[/ai/thumbnail-strategy] failed", err);
@@ -387,16 +312,16 @@ Design the highest-CTR thumbnail concept following the 8 pillars. Be specific an
 
 router.post("/ai/generate-thumbnail", async (req, res) => {
   try {
-    const { prompt, hd, useStrategy, idea, stylePreset } = req.body ?? {};
+    const { prompt, useStrategy, idea, stylePreset } = req.body ?? {};
 
     let finalPrompt: string | undefined = prompt;
     let strategy: any = undefined;
 
-    // Stage 1 — strategist (optional)
     if (useStrategy && idea?.title) {
-      const styleNote = stylePreset && STYLE_PRESETS[stylePreset]
-        ? `\nStyle preset: ${STYLE_PRESETS[stylePreset]}`
-        : "";
+      const styleNote =
+        stylePreset && STYLE_PRESETS[stylePreset]
+          ? `\nStyle preset: ${STYLE_PRESETS[stylePreset]}`
+          : "";
       const userMsg = `Video idea:
 Title: "${idea.title}"
 Hook: ${idea.hook ?? ""}
@@ -404,19 +329,9 @@ Tags: ${(idea.tags ?? []).join(", ")}
 Niche: ${idea.niche ?? "general"}${styleNote}
 
 Design the highest-CTR thumbnail concept following the 8 pillars. Be specific and concrete.`;
-      const stratResp = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: [{ role: "user", parts: [{ text: userMsg }] }],
-        config: {
-          systemInstruction: STRATEGIST_SYSTEM,
-          responseMimeType: "application/json",
-        },
-      });
-      try {
-        strategy = JSON.parse(stratResp.text ?? "{}");
-      } catch {
-        throw new Error("Strategist returned invalid JSON");
-      }
+
+      const stratText = await callText(userMsg, { system: STRATEGIST_SYSTEM, jsonMode: true });
+      strategy = JSON.parse(stratText);
       if (strategy?.imagePrompt) finalPrompt = strategy.imagePrompt;
     }
 
@@ -427,49 +342,14 @@ Design the highest-CTR thumbnail concept following the 8 pillars. Be specific an
       return;
     }
 
-    if (hd) {
-      const HD_MODELS = ["gemini-3-pro-image-preview", "gemini-2.5-pro-image-preview"];
-      let lastErr: any;
-      for (const model of HD_MODELS) {
-        try {
-          const response = await ai.models.generateContent({
-            model,
-            contents: [{ role: "user", parts: [{ text: finalPrompt }] }],
-            config: { responseModalities: [Modality.TEXT, Modality.IMAGE] },
-          });
-          const candidate = response.candidates?.[0];
-          const imagePart = candidate?.content?.parts?.find(
-            (p: any) => p.inlineData,
-          );
-          if (!imagePart?.inlineData?.data) {
-            lastErr = new Error("No image data in HD response");
-            continue;
-          }
-          res.json({
-            b64_json: imagePart.inlineData.data,
-            mimeType: imagePart.inlineData.mimeType || "image/png",
-            model,
-            strategy,
-          });
-          return;
-        } catch (err) {
-          lastErr = err;
-        }
-      }
-      // fallback to flash if HD models all fail
-      console.warn("[/ai/generate-thumbnail] HD failed, falling back to flash", lastErr);
-    }
-
-    const result = await generateImage(finalPrompt);
-    res.json({ ...result, model: "gemini-2.5-flash-image", strategy });
+    const result = await callImage(finalPrompt);
+    res.json({ ...result, model: "flux", strategy });
   } catch (err: any) {
     console.error("[/ai/generate-thumbnail] failed", err);
     res.status(502).json({ error: err?.message ?? "Thumbnail generation failed" });
   }
 });
 
-// ============ Thumbnail A/B Scorer ============
-// Scores 2-5 thumbnail images on CTR-related dimensions and picks a winner.
 const THUMB_SCORER_SYSTEM = `You are a YouTube thumbnail click-through-rate (CTR) judge for an Indian/Hindi tech-creator channel. You think like MrBeast's thumbnail designer.
 
 You will be shown 2-5 candidate thumbnail images for the SAME video idea. For EACH image, score it 1-10 on these axes:
@@ -531,42 +411,16 @@ JSON schema:
   "verdict": string
 }`;
 
-    const parts: any[] = thumbnails.map((t: any) => ({
-      inlineData: { mimeType: t.mimeType, data: t.data },
-    }));
-    parts.push({ text: prompt });
-
-    const MODELS = ["gemini-2.5-flash", "gemini-2.0-flash"];
-    let lastErr: any;
-    for (const model of MODELS) {
-      try {
-        const response = await ai.models.generateContent({
-          model,
-          contents: [{ role: "user", parts }],
-          config: {
-            systemInstruction: THUMB_SCORER_SYSTEM,
-            responseMimeType: "application/json",
-          },
-        });
-        const text = response.text ?? "{}";
-        const data = JSON.parse(text);
-        res.json(data);
-        return;
-      } catch (err: any) {
-        lastErr = err;
-        const status = err?.status ?? err?.response?.status;
-        const retryable = status === 503 || status === 429 || status >= 500;
-        if (!retryable) break;
-      }
-    }
-    throw lastErr ?? new Error("All score models failed");
+    const images = thumbnails.map((t: any) => ({ mimeType: t.mimeType, data: t.data }));
+    const text = await callText(prompt, { system: THUMB_SCORER_SYSTEM, images, jsonMode: true });
+    const data = JSON.parse(text);
+    res.json(data);
   } catch (err: any) {
     console.error("[/ai/score-thumbnails] failed", err);
     res.status(502).json({ error: err?.message ?? "Scoring failed" });
   }
 });
 
-// ============ Comment Reply Helper ============
 const COMMENT_HELPER_SYSTEM = `You are a YouTube comments triage assistant for a Hindi tech-creator channel. The creator gets dozens of comments per video and needs to reply quickly to the ones that matter most for engagement.
 
 For each comment, you must:
@@ -574,75 +428,37 @@ For each comment, you must:
 2) Detect intent: "question", "praise", "criticism", "suggestion", "spam", "joke", "personal"
 3) Detect sentiment: "positive", "negative", "neutral"
 4) Draft a SHORT, warm Hinglish reply (1-2 sentences max, like the creator is texting a friend, no corporate tone, no emojis unless natural). For "skip" or "warn", set draftReply to empty string.
-5) Give a 1-line "why" explaining the priority
 
-Be ruthlessly selective with "pin" (max 1-2 across the whole batch — only the BEST engagement driver). Most should be "reply" or "skip". Never give generic replies — reference the actual comment content.
-
-Return STRICT JSON.`;
+Return STRICT JSON: { "replies": [ { "index": number, "priority": string, "intent": string, "sentiment": string, "draftReply": string } ] }`;
 
 router.post("/ai/comment-replies", async (req, res) => {
   try {
-    const { comments, videoTitle, channelName, niche } = req.body ?? {};
+    const { videoTitle, niche, comments } = req.body ?? {};
     if (!Array.isArray(comments) || comments.length === 0) {
       res.status(400).json({ error: "Provide a non-empty 'comments' array" });
       return;
     }
-    const trimmed = comments.slice(0, 30); // safety cap
 
-    const commentsBlock = trimmed
-      .map((c: any, i: number) => `[${i}] @${c.author ?? "user"}: ${String(c.text ?? "").slice(0, 500)}`)
+    const commentBlock = comments
+      .map((c: any, i: number) => `[${i}] ${typeof c === "string" ? c : c?.text ?? ""}`)
       .join("\n");
 
-    const prompt = `Channel: ${channelName ?? "Creator"} (${niche ?? "general"})
-Video: "${videoTitle ?? "(not provided)"}"
+    const prompt = `Video: "${videoTitle ?? "(unknown)"}" | Niche: ${niche ?? "Hindi tech"}
 
-Comments to triage (index in brackets, EXACT same order in output):
-${commentsBlock}
+Comments to triage:
+${commentBlock}
 
-For EACH comment, return one entry in "replies" with:
-- index (number, 0-based, matching above)
-- priority: "pin" | "reply" | "skip" | "warn"
-- intent: "question" | "praise" | "criticism" | "suggestion" | "spam" | "joke" | "personal"
-- sentiment: "positive" | "negative" | "neutral"
-- draftReply (string — empty for skip/warn)
-- why (1-line Hinglish reason)
+Return JSON with a "replies" array, one entry per comment index.`;
 
-JSON schema:
-{
-  "replies": [{ "index": number, "priority": string, "intent": string, "sentiment": string, "draftReply": string, "why": string }]
-}`;
-
-    const MODELS = ["gemini-2.5-flash", "gemini-2.0-flash"];
-    let lastErr: any;
-    for (const model of MODELS) {
-      try {
-        const response = await ai.models.generateContent({
-          model,
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          config: {
-            systemInstruction: COMMENT_HELPER_SYSTEM,
-            responseMimeType: "application/json",
-          },
-        });
-        const text = response.text ?? "{}";
-        const data = JSON.parse(text);
-        res.json(data);
-        return;
-      } catch (err: any) {
-        lastErr = err;
-        const status = err?.status ?? err?.response?.status;
-        const retryable = status === 503 || status === 429 || status >= 500;
-        if (!retryable) break;
-      }
-    }
-    throw lastErr ?? new Error("All comment-reply models failed");
+    const text = await callText(prompt, { system: COMMENT_HELPER_SYSTEM, jsonMode: true });
+    const data = JSON.parse(text);
+    res.json(data);
   } catch (err: any) {
     console.error("[/ai/comment-replies] failed", err);
     res.status(502).json({ error: err?.message ?? "Comment reply generation failed" });
   }
 });
 
-// ============ Streaming Chat Endpoint ============
 router.post("/ai/stream", async (req, res) => {
   const { prompt, systemInstruction, attachments } = req.body ?? {};
   if (!prompt || typeof prompt !== "string") {
@@ -656,60 +472,25 @@ router.post("/ai/stream", async (req, res) => {
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
 
-  const parts: any[] = [];
+  const images: Array<{ mimeType: string; data: string }> = [];
   if (Array.isArray(attachments)) {
     for (const att of attachments) {
       if (att?.mimeType && att?.data) {
-        parts.push({ inlineData: { mimeType: att.mimeType, data: att.data } });
+        images.push({ mimeType: att.mimeType, data: att.data });
       }
     }
   }
-  parts.push({ text: prompt });
 
-  const config: any = { maxOutputTokens: 8192 };
-  if (typeof systemInstruction === "string" && systemInstruction.length > 0) {
-    config.systemInstruction = systemInstruction;
-  }
-
-  const STREAM_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest"];
-
-  for (const model of STREAM_MODELS) {
-    try {
-      const streamResult = await (ai.models as any).generateContentStream({
-        model,
-        contents: [{ role: "user", parts }],
-        config,
-      });
-      for await (const chunk of streamResult) {
-        const text = typeof chunk.text === "function" ? chunk.text() : (chunk.text ?? "");
-        if (text) res.write(`data: ${JSON.stringify({ text })}\n\n`);
-      }
-      res.write("data: [DONE]\n\n");
-      res.end();
-      return;
-    } catch (err: any) {
-      const status = err?.status ?? err?.response?.status;
-      const retryable = status === 503 || status === 429 || status >= 500;
-      if (!retryable) break;
-    }
-  }
-
-  // Fallback: regular generation, send in chunks
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [{ role: "user", parts }],
-      config,
-    });
-    const fullText = response.text ?? "";
-    const words = fullText.split(" ");
-    for (let i = 0; i < words.length; i += 5) {
-      const chunk = words.slice(i, i + 5).join(" ") + (i + 5 < words.length ? " " : "");
+    for await (const chunk of streamText(prompt, {
+      system: systemInstruction,
+      images: images.length > 0 ? images : undefined,
+    })) {
       res.write(`data: ${JSON.stringify({ text: chunk })}\n\n`);
     }
     res.write("data: [DONE]\n\n");
   } catch (err: any) {
-    res.write(`data: ${JSON.stringify({ error: err?.message ?? "Generation failed" })}\n\n`);
+    res.write(`data: ${JSON.stringify({ error: err?.message ?? "Stream failed" })}\n\n`);
   }
   res.end();
 });

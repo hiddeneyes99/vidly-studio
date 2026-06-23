@@ -166,6 +166,9 @@ importers:
 
   artifacts/api-server:
     dependencies:
+      '@gpt4free/g4f.dev':
+        specifier: ^1.1.2
+        version: 1.1.2
       '@workspace/api-zod':
         specifier: workspace:*
         version: link:../../lib/api-zod
@@ -818,6 +821,9 @@ packages:
     peerDependenciesMeta:
       '@modelcontextprotocol/sdk':
         optional: true
+
+  '@gpt4free/g4f.dev@1.1.2':
+    resolution: {integrity: sha512-ncCXCBixJZySDgznA3VeoHL22wwE412EAj4yeWX+A66cXu4vqgvdpMQjxhQfpqRIgRsWa+4cX2Y7iivdY6NqwQ==}
 
   '@hookform/resolvers@3.10.0':
     resolution: {integrity: sha512-79Dv+3mDF7i+2ajj7SkypSKHhl1cbln1OGavqrsF7p6mbUv11xpqpacPsGDCTRvCSjEEIez2ef1NveSVL3b0Ag==}
@@ -3905,6 +3911,8 @@ snapshots:
       - bufferutil
       - supports-color
       - utf-8-validate
+
+  '@gpt4free/g4f.dev@1.1.2': {}
 
   '@hookform/resolvers@3.10.0(react-hook-form@7.71.2(react@19.1.0))':
     dependencies:
